@@ -1,3 +1,7 @@
+const cron = require('node-cron');
+const fs = require('fs');
+const path = require('./scraper'); // تأكد أن ملف السكريبت الخاص بالمسح يسمى scraper.js أو حسب اسم ملفك
+const { generatePitch, sendEmailPitch } = require('./salesAgent');
 const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -101,3 +105,51 @@ async function startBot() {
 }
 
 startBot();
+// دالة مساعدة لحفظ العملاء الذين تم التواصل معهم لمنع التكرار
+const LEEDS_FILE = './leads.json';
+function loadSentLeads() {
+    if (fs.existsSync(LEEDS_FILE)) {
+        return JSON.parse(fs.readFileSync(LEEDS_FILE, 'utf8'));
+    }
+    return [];
+}
+
+function saveLead(lead) {
+    const leads = loadSentLeads();
+    leads.push(lead);
+    fs.writeFileSync(LEEDS_FILE, JSON.stringify(leads, null, 2));
+}
+
+// جدولة مهام البحث والإرسال التلقائي (تعمل يومياً مثلاً الساعة 9 صباحاً أو حسب الحاجة)
+cron.schedule('0 9 * * *', async () => {
+    console.log('⏰ بدأ تشغيل جدول مسح السوق التلقائي...');
+    try {
+        // استدعاء دالة البحث عن الشركات التي لا تملك موقعاً (مثال: في الخرطوم)
+        // تأكد من توافق الأسماء مع الدوال الموجودة في ملف scraper.js لديك
+        const discoveredLeads = await findLeadsWithoutWebsite("Khartoum", "amenity=restaurant");
+        const sentLeads = loadSentLeads();
+
+        for (const lead of discoveredLeads) {
+            // التحقق مما إذا تم التواصل مع هذا العميل مسبقاً
+            const alreadyContacted = sentLeads.some(l => l.name === lead.name);
+            if (alreadyContacted) continue;
+
+            console.log(`🎯 تم العثور على عميل محتمل جديد: ${lead.name}`);
+            
+            // إذا توفر إيميل للعميل، نقوم بإرسال عرض السعر تلقائياً
+            if (lead.email) {
+                const pitch = await generatePitch(lead.name);
+                await sendEmailPitch(lead.email, pitch);
+                console.log(`📧 تم إرسال الإيميل التسويقي إلى: ${lead.email}`);
+            }
+
+            // حفظ العميل في القائمة لعدم تكراره
+            saveLead(lead);
+            
+            // توقف بسيط بين كل إرسال لضمان الحماية
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+    } catch (error) {
+        console.error('❌ خطأ في الجدولة التلقائية:', error.message);
+    }
+});
