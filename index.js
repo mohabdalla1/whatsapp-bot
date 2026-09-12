@@ -247,3 +247,4 @@ async function startBot() {
     sock.ev.on('creds.update', saveCreds);
     // ... بقية كود الأحداث والتشغيل
 }
+// force deploy clean build
