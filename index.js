@@ -26,3 +26,7 @@ async function startWhatsAppBot() {
 
 startWhatsAppBot();
 
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
