@@ -1,3 +1,41 @@
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// تفعيل الاستماع للرسائل الواردة على الواتساب
+sock.ev.on('messages.upsert', async (m) => {
+    const msg = m.messages[0];
+    
+    // تجاهل الرسائل التي ليس لها محتوى أو الرسائل المرسلة من حسابنا الشخصي
+    if (!msg.message || msg.key.fromMe) return;
+
+    const senderJid = msg.key.remoteJid;
+    const userMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+    if (!userMessage) return;
+
+    console.log(`📩 رسالة جديدة واردة من ${senderJid}: ${userMessage}`);
+
+    try {
+        // توجيه رسالة العميل إلى نموذج Gemini لتوليد رد مبيعات دقيق
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `
+أنت وكيل مبيعات ومستشار تقني لشركة Sudax Solutions. العميل يراسلنا على الواتساب بشأن خدمات إنشاء المواقع الإلكترونية والحلول الرقمية.
+رسالة العميل: "${userMessage}"
+أجب بأسلوب احترافي وودود، وضح فوائد امتلاك موقع إلكتروني، وادعُه بلطف لتأكيد بدء التعاون أو حجز موعد.
+            `
+        });
+
+        const replyText = response.text;
+
+        // إرسال الرد التلقائي للعميل عبر الواتساب
+        await sock.sendMessage(senderJid, { text: replyText });
+        console.log(`📤 تم الرد تلقائياً على العميل بنجاح.`);
+
+    } catch (err) {
+        console.error("❌ خطأ أثناء معالجة الرد الذكي للرسالة الواردة:", err.message);
+    }
+});
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, delay } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
