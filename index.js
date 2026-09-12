@@ -1,4 +1,6 @@
 const cron = require('node-cron');
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const fs = require('fs');
 const path = require('./scraper'); // تأكد أن ملف السكريبت الخاص بالمسح يسمى scraper.js أو حسب اسم ملفك
 const { generatePitch, sendEmailPitch } = require('./salesAgent');
