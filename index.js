@@ -153,3 +153,95 @@ cron.schedule('0 9 * * *', async () => {
         console.error('❌ خطأ في الجدولة التلقائية:', error.message);
     }
 });
+const { proto } = require('@whiskeysockets/baileys');
+const { BufferJSON, initAuthCreds } = require('@whiskeysockets/baileys/lib/Utils');
+const { Pool } = require('pg');
+
+// اتصال بقاعدة البيانات السحابية عبر متغيرات البيئة في Render
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
+async function useSupabaseAuthState(tableName = 'whatsapp_sessions') {
+    const readData = async (key) => {
+        try {
+            const res = await pool.query(`SELECT value FROM ${tableName} WHERE key = $1`, [key]);
+            if (res.rows.length === 0) return null;
+            const parsed = JSON.parse(res.rows[0].value, BufferJSON.reviver);
+            return parsed;
+        } catch (error) {
+            console.error(`خطأ في قراءة المفتاح ${key} من السحابة:`, error);
+            return null;
+        }
+    };
+
+    const writeData = async (data, key) => {
+        try {
+            const serialized = JSON.stringify(data, BufferJSON.replacer);
+            await pool.query(
+                `INSERT INTO ${tableName} (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+                [key, serialized]
+            );
+        }
+    } catch (error) {
+        console.error(`خطأ في كتابة المفتاح ${key} للسحابة:`, error);
+    };
+
+    const removeData = async (key) => {
+        try {
+            await pool.query(`DELETE FROM ${tableName} WHERE key = $1`, [key]);
+        } catch (error) {
+            console.error(`خطأ في حذف المفتاح ${key}:`, error);
+        }
+    };
+
+    const creds = await readData('creds') || initAuthCreds();
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    for (const id of ids) {
+                        let value = await readData(`${type}-${id}`);
+                        if (type === 'app-state-sync-key' && value) {
+                            value = proto.Message.AppStateSyncKeyData.fromObject(value);
+                        }
+                        data[id] = value;
+                    }
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category of Object.keys(data)) {
+                        for (const id of Object.keys(data[category])) {
+                            const value = data[category][id];
+                            const key = `${category}-${id}`;
+                            if (value) {
+                                tasks.push(writeData(value, key));
+                            } else {
+                                tasks.push(removeData(key));
+                            }
+                        }
+                    }
+                    await Promise.all(tasks);
+                }
+            }
+        },
+        saveCreds: () => writeData(creds, 'creds')
+    };
+}
+
+module.exports = { useSupabaseAuthState };
+const { useSupabaseAuthState } = require('./useSupabaseAuthState');
+
+async function startBot() {
+    // استخدام التخزين السحابي بدلاً من الملفات المحلية
+    const { state, saveCreds } = await useSupabaseAuthState();
+    const sock = makeWASocket({ auth: state });
+
+    sock.ev.on('creds.update', saveCreds);
+    // ... بقية كود الأحداث والتشغيل
+}
