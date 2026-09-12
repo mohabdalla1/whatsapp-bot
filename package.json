@@ -1,0 +1,17 @@
+{
+  "name": "whatsapp-solar-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "axios": "^1.20.0",
+    "express": "^4.19.2",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.9",
+    "pino": "^9.0.0"
+  }
+}
